@@ -39,9 +39,13 @@ bool Logger::initialize(const std::string& logsDir, bool isLocalTime) {
   }
   m_isLocalTime = isLocalTime;
 
-  // defining file name
+  // defining file name and trailing slash fix
+  std::string fixedLogsDir = logsDir;
   std::string fileName = getTime() + ".log";
-  std::string filePath = logsDir + fileName;
+  if (!logsDir.empty() && logsDir.back() != '/' && logsDir.back() != '\\')
+    fixedLogsDir += '/';
+  
+  std::string filePath = fixedLogsDir + fileName;
   m_logFile.open(filePath.c_str(), std::ios::out | std::ios::app);
 
   // check defensively

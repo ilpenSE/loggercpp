@@ -3,7 +3,6 @@
 
 #include <sstream>
 #include <string>
-
 #include "logger.hpp"
 
 class LoggerStream {
@@ -28,5 +27,9 @@ private:
   std::ostringstream m_buffer;
   LogFunc m_logFunc;
 };
+
+#define linfo LoggerStream(&Logger::logInfo)
+#define lerror LoggerStream(&Logger::logError)
+#define lwarning LoggerStream(&Logger::logWarning)
 
 #endif // LOGGERSTREAM_HPP
