@@ -9,7 +9,7 @@
 #   make os=mingw arch=aarch64 -> Windows ARM64 (llvm-mingw)
 
 CC ?= gcc
-CFLAGS = -std=c11 -x c -DLOGGER_IMPLEMENTATION -pthread -fPIC -Wall -Wextra
+CFLAGS = -std=c11 -x c -DLOGGER_IMPLEMENTATION -DLOGGER_BUILD -pthread -fPIC -Wall -Wextra
 DYNAMIC_LIB_EXT ?= so
 BUILD = build
 HEADER = logger.h

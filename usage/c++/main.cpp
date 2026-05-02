@@ -110,11 +110,8 @@ int myFormatter(const char* time_str, LgLogLevel level,
 }
 
 int main() {
-  LoggerConfig conf = {};
-  conf.localTime = true;
+  LoggerConfig conf = LOGGER_CONFIG_DEFAULTS();
   conf.maxFiles = 10;
-  conf.generateDefaultFile = true;
-  conf.logPolicy = LG_DROP;
   conf.logFormatter = myFormatter;
   lg_append_sink(&conf, stdout, LG_OUT_TTY);
 

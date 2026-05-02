@@ -23,7 +23,8 @@ void* producer(void* arg) {
 }
 
 int main() {
-  LoggerConfig cfg = lg_get_defaults();
+  LoggerConfig cfg = lg_config_defaults();
+  lg_append_sink(&cfg, stdout, LG_OUT_TTY);
 
   // IF YOU UNCOMMENT THIS: RACE CONDITION WILL BE TRIGGERED (at least in my machine)
   //cfg.logPolicy = LG_BLOCK;

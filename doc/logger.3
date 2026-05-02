@@ -1,0 +1,203 @@
+.TH LOGGER 3 "2026-05-02" "4.3" "Logger Library Manual"
+.SH NAME
+logger \- internals and architecture of the Logger library
+.SH DESCRIPTION
+This page explains how the Logger library works internally.
+For API usage see
+.BR logger (1)
+and
+.BR logger (2).
+.SH PRODUCER-CONSUMER ARCHITECTURE
+The library operates with two threads:
+.TP
+.B Producer (main thread)
+Formats log messages and pushes them into the ring buffer.
+Any number of threads may act as producers simultaneously.
+.TP
+.B Consumer (writer thread)
+Spawned by
+.BR lg_init .
+Reads messages from the ring buffer in batches and writes them to the registered sinks.
+.PP
+Because time strings are evaluated on the consumer side, the timestamp in a log message
+reflects when the message was
+.I written
+to the sink, not when the producer called the log function.
+.SH LOCK-FREE MPSC RING BUFFER
+Since version 4.0 the library uses a
+.B Multiple-Producer Single-Consumer (MPSC)
+ring buffer implemented entirely with C11 atomics. No mutexes are used anywhere.
+.PP
+Key properties:
+.IP \(bu 4
+.B Atomic head
+\(em
+.I LogQueue.head
+is atomic because both producers and the consumer read and write it.
+Producers claim a slot with an atomic compare-and-exchange on
+.IR head .
+.IP \(bu 4
+.B Non-atomic tail
+\(em
+.I LogQueue.tail
+is owned exclusively by the consumer and requires no atomic access.
+.IP \(bu 4
+.B Cache-line alignment
+\(em
+.I head
+and
+.I tail
+are placed in separate cache lines to prevent false sharing.
+.I isAlive
+is similarly aligned.
+.IP \(bu 4
+.B Slot sequence numbers
+\(em each slot carries an atomic sequence counter.
+A slot is ready to consume when its sequence equals its position plus one.
+Releasing a slot advances its sequence by
+.B LOGGER_RING_SIZE
+so it can be reclaimed.
+.IP \(bu 4
+.B Batch processing
+\(em the consumer drains as many consecutive ready slots as possible in one pass
+.RB ( lgi_queue_ppr_batch ),
+then writes them all with a single
+.BR writev (2)
+call per sink type to minimise syscall overhead.
+.IP \(bu 4
+.B PPR (Pop-Process-Release) separation
+\(em popping a slot does not immediately release it.
+Release happens only after the payload has been fully processed.
+This prevents the producer from overwriting a slot the consumer is still reading.
+.SH ADAPTIVE WAITING (BLOCK POLICY)
+When
+.B LG_BLOCK
+policy is active and the ring buffer is full, the producer does not spin in a tight loop.
+It progresses through three stages:
+.TP
+.B Stage 1 \(em plain spin
+The producer spins without any pause until the spin count reaches
+.BR LOGGER_WAIT_NO_PAUSE_MAGIC " (default: 128)."
+.TP
+.B Stage 2 \(em spin with PAUSE
+The producer issues a CPU
+.B PAUSE
+instruction on each iteration (reduces power and pipeline pressure) until the count reaches
+.BR LOGGER_WAIT_PAUSE_MAGIC " (default: 1024)."
+.TP
+.B Stage 3 \(em sleep
+The producer calls
+.BR nanosleep (2)
+for approximately 60 ns per iteration (the kernel floors this to roughly 70-80 \[mc]s)
+and loops until space is available.
+.PP
+Tune
+.B LOGGER_WAIT_NO_PAUSE_MAGIC
+and
+.B LOGGER_WAIT_PAUSE_MAGIC
+at compile time to match your traffic profile:
+higher values tolerate longer bursts; lower values reduce latency under light load.
+.SH DROP POLICY AND DEBUGGING
+Under the default
+.B LG_DROP
+policy a message is silently discarded when the ring buffer is full.
+To observe where drops occur, compile with
+.B \-DLOGGER_DEBUG
+or place
+.B #define LOGGER_DEBUG
+before the implementation include.
+Debug output goes to stderr.
+.PP
+Benchmark result illustrating the drop/speed trade-off (1M logs, drop policy):
+.nf
+Is stderr?: YES
+Log Policy: Drop
+Dropped:    967413 logs
+Elapsed:    65322363 ns
+Per log:    65.32 ns
+.fi
+.PP
+When stderr is attached, the consumer slows down significantly (roughly 4x).
+Because the ring buffer is fixed-size, a slow consumer causes the producer to fill
+the buffer and start dropping, which artificially lowers the measured time per log call.
+Removing the stderr sink raised the measured cost from ~35 ns to ~55 ns per call
+because fewer messages were dropped and the true queue contention became visible.
+.SH SINKS
+Up to
+.B LOGGER_MAX_SINKS
+(8) file sinks plus one reserved slot for the default log file can be registered per instance.
+Each sink has an
+.B LgOutType
+that selects which formatted variant of the message it receives:
+.TP
+.B LG_OUT_TTY
+ANSI-colourised output. Disable colours globally with
+.BR \-DLOGGER_DONT_COLORIZE .
+.TP
+.B LG_OUT_FILE
+Plain text, no colour codes.
+.TP
+.B LG_OUT_NET
+JSON-formatted:
+.BR "{\"timestamp\":\"...\",\"level\":\"...\",\"message\":\"...\"}" .
+.PP
+The formatter callback receives a
+.I needed
+bitmask and fills the corresponding
+.I LgMsgPack
+slots. The consumer then dispatches each slot to all sinks of that type in one vectored write.
+.SH MULTIPLE INSTANCES
+Each call to
+.B lg_init
+spawns a dedicated writer thread, so multiple instances run fully independently.
+The global active instance (used by implicit-instance functions) is managed with
+.BR lg_set_active_instance / lg_get_active_instance .
+.B lg_init
+sets the active instance automatically if it is currently NULL.
+.PP
+.B lg_destroy
+does
+.I not
+set the active instance to NULL and does
+.I not
+free memory. The caller is responsible for memory management via
+.BR lg_alloc / lg_free .
+.SH LIFETIME AND THREAD SAFETY
+.B lg_destroy
+is safe to call from a single thread only when no producer threads are concurrently
+pushing logs. Calling destroy while producers are active triggers a race condition
+(Use-After-Destroy). The required ordering is:
+.IP 1. 4
+.B lg_init
+.IP 2. 4
+All log pushes.
+.IP 3. 4
+.B lg_destroy
+(after all producers have finished).
+.IP 4. 4
+.B lg_free
+(if heap-allocated).
+.SH COMPILER REQUIREMENTS
+.TP
+.B C
+C11 minimum (for
+.B _Atomic
+and
+.BR stdatomic.h ).
+C89 and C99 builds are possible by compiling to a shared library and using the
+no-implementation header generated by the Makefile.
+.TP
+.B C++
+C++17 minimum (for
+.B inline
+variable support).
+.SH SEE ALSO
+.BR logger (1),
+.BR logger (2),
+.BR writev (2),
+.BR nanosleep (2),
+.BR stdatomic (7)
+.SH AUTHOR
+ilpeN <https://github.com/ilpenSE/logger>
+.SH LICENSE
+MIT License

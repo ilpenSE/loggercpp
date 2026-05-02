@@ -4,8 +4,7 @@
 static Logger logger;
 
 int main() {
-  LoggerConfig cfg = lg_get_defaults();
-  lg_init(&logger, "logs", cfg);
+  lg_init_opt(&logger, "logs", .sinks={.items={{stdout, LG_OUT_TTY}}, .count=1});
 
   printf("Is logger alive: %s\n", lg_is_alive(&logger) ? "YES" : "NO");
   lg_info("This should be visible!");

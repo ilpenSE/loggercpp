@@ -36,10 +36,10 @@ ffi = FFI()
 
 ffi.cdef("""
 typedef enum {
-  LG_INFO = 1 << 0,
-  LG_ERROR = 1 << 1,
-  LG_WARNING = 1 << 2,
-  LG_CUSTOM = 1 << 3,
+  LG_INFO,
+  LG_ERROR,
+  LG_WARNING,
+  _LgLogLevel_count,
 } LgLogLevel;
 
 typedef enum {
@@ -103,20 +103,20 @@ int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);
 int lg_destroy(Logger* instance);
 int lg_is_alive(const Logger* instance);
 
-int lg_finfo(const char* msg);
-int lg_ferror(const char* msg);
-int lg_fwarn(const char* msg);
-int lg_flog(LgLogLevel level, const char* msg);
+int lg_log(LgLogLevel level, const char* msg);
+int lg_info(const char* msg);
+int lg_error(const char* msg);
+int lg_warn(const char* msg);
 
-int lg_flogi(Logger* lg, LgLogLevel level, const char* msg);
-int lg_finfoi(Logger* lg, const char* msg);
-int lg_ferrori(Logger* lg, const char* msg);
-int lg_fwarni(Logger* lg, const char* msg);
+int lg_logi(Logger* inst, LgLogLevel level, const char* msg);
+int lg_infoi(Logger* inst, const char* msg);
+int lg_errori(Logger* inst, const char* msg);
+int lg_warni(Logger* inst, const char* msg);
 
 void lg_str_write_into(LgString* s, const char* str);
 const char* lg_lvl_to_str(const LgLogLevel level);
 int lg_get_time_str(char* buf, int isLocalTime);
-LoggerConfig lg_get_defaults();
+LoggerConfig lg_config_defaults();
 int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type);
 
 FILE* lg_get_stdout();
@@ -198,7 +198,7 @@ class LoggerConfig:
 
   @staticmethod
   def default() -> "LoggerConfig":
-    c_defaults = _logger.lg_get_defaults()
+    c_defaults = _logger.lg_config_defaults()
     cfg = LoggerConfig()
     cfg._c[0] = c_defaults
     return cfg
@@ -235,29 +235,29 @@ class Logger:
 
   # Log Function Transpilations
   def info(self, msg: str) -> bool:
-    return bool(_logger.lg_finfo(msg.encode()))
+    return bool(_logger.lg_info(msg.encode()))
 
   def error(self, msg: str) -> bool:
-    return bool(_logger.lg_ferror(msg.encode()))
+    return bool(_logger.lg_error(msg.encode()))
 
   def warn(self, msg: str) -> bool:
-    return bool(_logger.lg_fwarn(msg.encode()))
+    return bool(_logger.lg_warn(msg.encode()))
 
   def log(self, level: LogLevel, msg: str) -> bool:
-    return bool(_logger.lg_flog(level, msg.encode()))
+    return bool(_logger.lg_log(level, msg.encode()))
 
   # Explicit instances
   def infoi(self, msg: str) -> bool:
-    return bool(_logger.lg_finfoi(self._ptr, msg.encode()))
+    return bool(_logger.lg_infoi(self._ptr, msg.encode()))
 
   def errori(self, msg: str) -> bool:
-    return bool(_logger.lg_ferrori(self._ptr, msg.encode()))
+    return bool(_logger.lg_errori(self._ptr, msg.encode()))
 
   def warni(self, msg: str) -> bool:
-    return bool(_logger.lg_fwarni(self._ptr, msg.encode()))
+    return bool(_logger.lg_warni(self._ptr, msg.encode()))
 
   def logi(self, level: LogLevel, msg: str) -> bool:
-    return bool(_logger.lg_flogi(self._ptr, level, msg.encode()))
+    return bool(_logger.lg_logi(self._ptr, level, msg.encode()))
 
   # Decorator for custom formatter
   # Func is full python function (parameters etc.) go to main.py

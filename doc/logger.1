@@ -1,0 +1,131 @@
+.TH LOGGER 1 "2026-05-02" "4.3" "Logger Library Manual"
+.SH NAME
+logger \- lightweight asynchronous thread-safe C logging library
+.SH SYNOPSIS
+.nf
+.B #define LOGGER_IMPLEMENTATION
+.B #include "logger.h"
+.fi
+.SH DESCRIPTION
+.B Logger
+is an asynchronous, lock-free, thread-safe single-header logging library written in C.
+ It supports POSIX, Windows and Apple platforms and requires minimum C11 or C++17.
+.PP
+ The library follows the STB-style single-header pattern: define
+.B LOGGER_IMPLEMENTATION
+in exactly one translation unit before including the header.
+ To build a shared object instead, define both
+.B LOGGER_IMPLEMENTATION
+and
+.B LOGGER_BUILD
+during compilation.
+.SH QUICK START
+.nf
+#define LOGGER_IMPLEMENTATION
+#include "logger.h"
+
+int main(void) {
+    Logger *lg = lg_alloc();
+    LoggerConfig cfg = LOGGER_CONFIG_DEFAULTS();
+    lg_append_sink(&cfg, stdout, LG_OUT_TTY);
+    lg_init(lg, "logs", cfg);
+
+    lg_info("Hello, %s!", "world");
+
+    lg_destroy(lg);
+    lg_free(lg);
+    return 0;
+}
+.fi
+.SH LIFECYCLE FUNCTIONS
+.TP
+.BR "int lg_init" "(Logger *instance, const char *logs_dir, LoggerConfig config)"
+ Main initializer. Creates the writer thread and sets up sinks.
+ Returns 1 on success.
+ Dead instances can be re-initialized with this function.
+ Automatically sets the active instance if none is set.
+.TP
+.BR "int lg_init_defaults" "(Logger *instance, const char *logs_dir)"
+ Initializer with default configuration. Equivalent to calling
+.B lg_init
+with
+.BR LOGGER_CONFIG_DEFAULTS() .
+.TP
+.BR "int lg_init_opt" "(Logger *instance, const char *logs_dir, ...)"
+ Initializer with optional named parameters (C99 only, unavailable in C++ and LOGGER_BUILD).
+ Accepts dot-notation overrides:
+.BR "lg_init_opt(lg, \(dqlogs\(dq, .localTime=0)" .
+.TP
+.BR "int lg_init_flat" "(Logger *inst, const char *logs_dir, int local_time, int max_log_files, int generateDefaultFile, LgSinks sinks, LgLogPolicy log_policy, log_formatter_t log_formatter)"
+Flat (struct-free) version of
+.BR lg_init .
+Intended for FFI consumers whose language cannot construct C structs.
+.TP
+.BR "int lg_destroy" "(Logger *instance)"
+ Shuts down the writer thread, flushes remaining messages and clears instance fields.
+ Returns 1 on success.
+.B Does not free memory.
+Pass NULL to destroy the active instance.
+.B Warning:
+ calling destroy while producer threads are still active causes undefined behaviour.
+ Ensure all producers have finished before calling this.
+.TP
+.BR "Logger* lg_alloc" "(void)"
+Heap-allocates and zero-initialises a Logger instance. Use with
+.BR lg_free .
+.TP
+.BR "void lg_free" "(Logger *inst)"
+Frees a heap-allocated Logger instance. Call only after
+.BR lg_destroy .
+.SH ACTIVE INSTANCE
+.TP
+.BR "int lg_set_active_instance" "(Logger *inst)"
+Sets the global active instance used by implicit-instance log functions.
+.TP
+.BR "Logger* lg_get_active_instance" "(void)"
+Returns the current active instance.
+.SH CONFIGURATION
+.SS LoggerConfig struct
+.nf
+typedef struct {
+    int           localTime;          /* default: 1 (true)  */
+    int           maxFiles;           /* default: 0         */
+    int           generateDefaultFile;/* default: 1 (true)  */
+    LgSinks       sinks;              /* default: empty     */
+    LgLogPolicy   logPolicy;          /* default: LG_DROP   */
+    log_formatter_t logFormatter;     /* default: NULL      */
+} LoggerConfig;
+.fi
+.TP
+.BR "LoggerConfig LOGGER_CONFIG_DEFAULTS" "(...)"
+ Returns a LoggerConfig populated with the defaults shown above.
+ In C99 and later, fields can be overridden via variadic arguments.
+ Not available for override in C++ or below C99.
+.TP
+.BR "LoggerConfig lg_config_defaults" "(void)"
+ Function wrapper for
+.BR LOGGER_CONFIG_DEFAULTS() .
+ Useful in FFI contexts where macros are unavailable.
+.TP
+.BR "int lg_append_sink" "(LoggerConfig *config, FILE *f, LgOutType type)"
+ Appends a file sink to the config. Up to 8 sinks are supported.
+.I type
+is one of
+.BR LG_OUT_TTY ", " LG_OUT_FILE " or " LG_OUT_NET .
+.SH LOG POLICIES
+.TP
+.B LG_DROP
+If the ring buffer is full, the incoming log message is silently discarded. (default)
+.TP
+.B LG_BLOCK
+Producer adaptively waits until space is available in the ring buffer.
+.TP
+.B LG_PRIORITY_BASED
+Priority-based eviction policy.
+.SH SEE ALSO
+.BR logger (2),
+.BR logger (3)
+.SH AUTHOR
+ilpeN <https://github.com/ilpenSE/logger>
+.SH LICENSE
+MIT License

@@ -2,7 +2,7 @@
 # Ran this with "nmake" like this: nmake /f Makefile.win
 
 CC=cl
-CFLAGS=/std:c11 /experimental:c11atomics /W4 /Fo:build\ /DLOGGER_IMPLEMENTATION /D_CRT_SECURE_NO_WARNINGS /D_REENTRANT
+CFLAGS=/std:c11 /experimental:c11atomics /W4 /Fo:build\ /DLOGGER_IMPLEMENTATION /DLOGGER_BUILD /D_CRT_SECURE_NO_WARNINGS /D_REENTRANT
 
 BUILD = build
 HEADER = logger.h

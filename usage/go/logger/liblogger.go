@@ -1,7 +1,7 @@
 package logger
 
 /*
-#cgo CFLAGS: -I../../../build
+#cgo CFLAGS: -DLOGGER_BUILD -I../../../build
 #cgo LDFLAGS: -L../../../build -lpthread -l:liblogger.a
 #include <logger.h>
 #include <stddef.h>
@@ -155,8 +155,8 @@ func (l *Logger) Custom(msg string) error { return l.Log(LevelCustom, msg) }
 func (l *Logger) FLog(level LogLevel, msg string) error {
   cs := C.CString(msg)
   defer C.free(unsafe.Pointer(cs))
-  if C.lg_flogi(l.ptr, C.LgLogLevel(level), cs) == 0 {
-    return errors.New("lg_flogi failed")
+  if C.lg_logi(l.ptr, C.LgLogLevel(level), cs) == 0 {
+    return errors.New("lg_logi failed")
   }
   return nil
 }
@@ -172,8 +172,8 @@ func GetActive() *Logger {
 func GlobalInfo(msg string) error {
   cs := C.CString(msg)
   defer C.free(unsafe.Pointer(cs))
-  if C.lg_finfo(cs) == 0 {
-    return errors.New("lg_finfo failed")
+  if C.lg_info(cs) == 0 {
+    return errors.New("lg_info failed")
   }
   return nil
 }
@@ -182,8 +182,8 @@ func GlobalInfo(msg string) error {
 func GlobalError(msg string) error {
   cs := C.CString(msg)
   defer C.free(unsafe.Pointer(cs))
-  if C.lg_ferror(cs) == 0 {
-    return errors.New("lg_ferror failed")
+  if C.lg_error(cs) == 0 {
+    return errors.New("lg_error failed")
   }
   return nil
 }
@@ -192,8 +192,8 @@ func GlobalError(msg string) error {
 func GlobalWarn(msg string) error {
   cs := C.CString(msg)
   defer C.free(unsafe.Pointer(cs))
-  if C.lg_fwarn(cs) == 0 {
-    return errors.New("lg_fwarn failed")
+  if C.lg_warn(cs) == 0 {
+    return errors.New("lg_warn failed")
   }
   return nil
 }

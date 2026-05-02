@@ -1,0 +1,210 @@
+.TH LOGGER 2 "2026-05-02" "4.3" "Logger Library Manual"
+.SH NAME
+logger \- full API reference for the Logger library
+.SH SYNOPSIS
+.B #include "logger.h"
+.SH DESCRIPTION
+This page documents all logging functions, helper utilities and sink/FFI helpers.
+For introduction and lifecycle functions see
+.BR logger (1).
+For internals and architecture see
+.BR logger (3).
+.SH LOGGING FUNCTIONS
+Log functions come in two flavours:
+.IP \(bu 4
+.B Implicit instance
+\(em operate on the active instance set by
+.BR lg_set_active_instance .
+.IP \(bu 4
+.B Explicit instance
+(\fBi\fR suffix) \(em take a
+.I Logger*
+as the first argument. Passing
+.B NULL
+falls back to the active instance.
+.PP
+Each flavour also has an
+.B f
+(formatted/pre-formatted) variant that takes a plain
+.B const char*
+and is always available regardless of compiler version or
+.BR LOGGER_BUILD .
+The variadic variants disappear when
+.B LOGGER_BUILD
+is defined.
+.SS Low-level producers
+.TP
+.BR "int lg_log_" "(Logger *inst, LgLogLevel level, const char *msg, size_t msglen)"
+Core producer. Pushes a pre-formatted message directly into the ring buffer.
+Not recommended for direct use; prefer the higher-level functions below.
+.TP
+.BR "int lg_vlog_" "(Logger *inst, LgLogLevel level, const char *fmt, va_list ap)"
+Applies printf-style formatting via
+.I ap
+then calls
+.BR lg_log_ .
+Use this when forwarding variadic arguments from your own functions.
+.SS Variadic functions (implicit instance)
+.TP
+.BR "int lg_log" "(LgLogLevel level, const char *fmt, ...)"
+Log with explicit level, implicit instance.
+.TP
+.BR "int lg_info" "(const char *fmt, ...)"
+.TQ
+.BR "int lg_warn" "(const char *fmt, ...)"
+.TQ
+.BR "int lg_error" "(const char *fmt, ...)"
+.TQ
+.BR "int lg_custom" "(const char *fmt, ...)"
+Convenience wrappers for each log level with implicit instance.
+.SS Variadic functions (explicit instance)
+.TP
+.BR "int lg_logi" "(Logger *inst, LgLogLevel level, const char *fmt, ...)"
+Log with explicit level and explicit instance.
+.TP
+.BR "int lg_infoi" "(Logger *inst, const char *fmt, ...)"
+.TQ
+.BR "int lg_warni" "(Logger *inst, const char *fmt, ...)"
+.TQ
+.BR "int lg_errori" "(Logger *inst, const char *fmt, ...)"
+.TQ
+.BR "int lg_customi" "(Logger *inst, const char *fmt, ...)"
+Convenience wrappers with explicit instance.
+.SS Pre-formatted functions, implicit instance (f prefix, always available)
+.TP
+.BR "int lg_flog" "(LgLogLevel level, const char *msg)"
+.TP
+.BR "int lg_finfo" "(const char *msg)"
+.TQ
+.BR "int lg_fwarn" "(const char *msg)"
+.TQ
+.BR "int lg_ferror" "(const char *msg)"
+.TQ
+.BR "int lg_fcustom" "(const char *msg)"
+.SS Pre-formatted functions, explicit instance (fi suffix, always available)
+.TP
+.BR "int lg_flogi" "(Logger *inst, LgLogLevel level, const char *msg)"
+.TP
+.BR "int lg_finfoi" "(Logger *inst, const char *msg)"
+.TQ
+.BR "int lg_fwarni" "(Logger *inst, const char *msg)"
+.TQ
+.BR "int lg_ferrori" "(Logger *inst, const char *msg)"
+.TQ
+.BR "int lg_fcustomi" "(Logger *inst, const char *msg)"
+.SH HELPER FUNCTIONS
+.TP
+.BR "const char* lg_lvl_to_str" "(LgLogLevel level)"
+Converts a
+.I LgLogLevel
+enum value to a human-readable C string
+.RB ( \(dqINFO\(dq ", " \(dqERROR\(dq ", " \(dqWARNING\(dq ", " \(dqCUSTOM\(dq ).
+.TP
+.BR "int lg_get_time_str" "(Logger *inst, char *buf)"
+Writes the current timestamp into
+.I buf
+in the format
+.B YYYY.MM.DD-HH.MM.SS.mmm
+(including the NUL terminator).
+.I buf
+must be at least
+.B LOGGER_TIME_STR_SIZE
+(24) bytes.
+Timestamp is evaluated at the consumer (writer) thread, not at call time.
+.TP
+.BR "void lg_str_format_into" "(LgString *s, const char *fmt, ...)"
+printf-style formatter that writes into an
+.I LgString
+struct. Guarantees a trailing newline and NUL terminator.
+Useful inside custom formatter callbacks.
+.TP
+.BR "void lg_str_write_into" "(LgString *s, const char *str)"
+Copies a NUL-terminated string into an
+.I LgString
+struct.
+.TP
+.BR "int lg_is_alive" "(const Logger *instance)"
+Returns 1 if the instance is running. Pass NULL to check the active instance.
+.SH CUSTOM FORMATTER
+Assign a
+.B log_formatter_t
+to
+.I LoggerConfig.logFormatter
+to override the default layout
+.RB ( "time_str [level] msg" ).
+.PP
+Prototype:
+.nf
+typedef int (*log_formatter_t)(
+    const char  *time_str,
+    LgLogLevel   level,
+    const char  *msg,
+    uint32_t     needed,
+    LgMsgPack    out
+);
+.fi
+.PP
+.I needed
+is a bitmask of
+.B LgOutType
+flags indicating which sink types are active.
+Use
+.B LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY)
+etc. to guard each output.
+Write into the appropriate
+.B LgString
+inside
+.I out
+using
+.BR lg_str_format_into .
+Always append
+.B \\n
+at the end. Return 1 on success.
+.PP
+Example:
+.nf
+int myFormatter(const char *time_str, LgLogLevel level,
+                const char *msg, uint32_t needed, LgMsgPack pack) {
+    const char *lvl = lg_lvl_to_str(level);
+    if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_TTY))
+        lg_str_format_into(&pack[LG_OUT_TTY],
+                           "%s/%s: %s\\n", time_str, lvl, msg);
+    if (LOGGER_CONTAINS_FLAG(needed, LG_OUT_FILE))
+        lg_str_format_into(&pack[LG_OUT_FILE],
+                           "%s/%s: %s\\n", time_str, lvl, msg);
+    return 1;
+}
+.fi
+.SH FFI / FILE HELPERS
+In FFI contexts, do not use the host language's file primitives.
+Use the following wrappers instead to avoid double-free and GC conflicts.
+.TP
+.BR "FILE* lg_get_stdout" "(void)"
+Returns
+.BR stdout .
+.TP
+.BR "FILE* lg_get_stderr" "(void)"
+Returns
+.BR stderr .
+.TP
+.BR "FILE* lg_fopen" "(const char *path)"
+Opens
+.I path
+in
+.B wb
+mode as required by the library's
+.BR fwrite -based
+payload processor.
+.SH ADDING CUSTOM LOG LEVELS
+Add a new entry to the
+.B LG_LOG_LEVELS
+X-macro and, if using
+.IR loggerstream.hpp ,
+define the corresponding stream macro there. No other changes are required.
+.SH SEE ALSO
+.BR logger (1),
+.BR logger (3)
+.SH AUTHOR
+ilpeN <https://github.com/ilpenSE/logger>
+.SH LICENSE
+MIT License

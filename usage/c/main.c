@@ -38,18 +38,19 @@ int myFormatter(const char* time_str, LgLogLevel level,
 
 Logger* lg;
 int main() {
+  lg = lg_alloc();
+
+  lg_init_opt(lg, "logs", .logFormatter=myFormatter,
+              .sinks={.items={ {stdout, LG_OUT_TTY} }, .count=1});
+
+  lg_info("working");
+
+  lg_destroy(lg);
+
   FILE* customFile = fopen("log.log", "wb");
   if (customFile == NULL) return 1;
 
-  lg = lg_alloc();
-
-  LoggerConfig conf = {
-    .localTime = true,
-    .generateDefaultFile = true,
-    .logPolicy = LG_DROP,
-    .maxFiles = 0,
-    .logFormatter = myFormatter,
-  };
+  LoggerConfig conf = LOGGER_CONFIG_DEFAULTS(.logFormatter=myFormatter);
   lg_append_sink(&conf, stderr, LG_OUT_NET);
   lg_append_sink(&conf, stdout, LG_OUT_TTY);
   lg_append_sink(&conf, customFile, LG_OUT_FILE);
@@ -62,7 +63,6 @@ int main() {
   lg_info("the %s", "informatics");
   lg_error("the errormatics");
   lg_warn("the warningmatics");
-
   do_something();
 
   if (!lg_destroy(lg)) {

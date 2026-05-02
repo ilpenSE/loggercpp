@@ -14,44 +14,44 @@ like `testn.sh 10`. and it will clear the results.txt file and puts all the resu
 
 # Results on my machine
 
-- With 16 GiB RAM, Intel Core i5-8500 6 Cores, 4.0 GHz, x86_64
-- Compiled with GCC, on GNU/Linux:
+- With 16 GB RAM and AMD Ryzen 5 5600 (6C/12T) CPU
+- Compiled with GCC (without optimizations), on GNU/Linux:
 
 ```
 +-------------------------+-------------------------+-------------------------+
 | Single Threaded         | WITH stderr sink        | WITHOUT stderr sink     |
 +-------------------------+-------------------------+-------------------------+
 | Drop Policy             | (1000 runs)             | (1000 runs)             |
-| Minimum                 | 8,762,583.00 logs/sec   | 15,457,015.00 logs/sec  |
-| Maximum                 | 31,733,203.00 logs/sec  | 28,715,350.00 logs/sec  |
-| Average                 | 23,296,825.07 logs/sec  | 21,169,493.64 logs/sec  |
-| Median                  | 23,367,381.00 logs/sec  | 21,445,465.50 logs/sec  |
-| Std Dev                 | 1,050,903.81 logs/sec   | 980,765.08 logs/sec     |
+| Minimum                 | 2,580,975.00 logs/sec   | 8,634,043.00 logs/sec   |
+| Maximum                 | 3,230,382.00 logs/sec   | 11,163,964.00 logs/sec  |
+| Average                 | 2,953,149.73 logs/sec   | 10,496,672.40 logs/sec  |
+| Median                  | 2,959,802.00 logs/sec   | 10,511,427.00 logs/sec  |
+| Std Dev                 | 103,399.21 logs/sec     | 254,099.91 logs/sec     |
 +-------------------------+-------------------------+-------------------------+
 | Block Policy            | (1000 runs)             | (1000 runs)             |
-| Minimum                 | 4,283,080.00 logs/sec   | 5,978,928.00 logs/sec   |
-| Maximum                 | 9,066,669.00 logs/sec   | 21,739,206.00 logs/sec  |
-| Average                 | 8,683,404.37 logs/sec   | 20,262,225.76 logs/sec  |
-| Median                  | 8,727,793.50 logs/sec   | 20,824,819.50 logs/sec  |
-| Std Dev                 | 379,101.58 logs/sec     | 1,696,879.13 logs/sec   |
+| Minimum                 | 323,983.00 logs/sec     | 9,203,440.00 logs/sec   |
+| Maximum                 | 3,176,460.00 logs/sec   | 10,937,473.00 logs/sec  |
+| Average                 | 3,123,611.83 logs/sec   | 10,626,552.93 logs/sec  |
+| Median                  | 3,132,678.00 logs/sec   | 10,642,191.50 logs/sec  |
+| Std Dev                 | 91,834.92 logs/sec      | 139,600.51 logs/sec     |
 +-------------------------+-------------------------+-------------------------+
 
 +-------------------------+-------------------------+-------------------------+
 | Multi Threaded          | WITH stderr sink        | WITHOUT stderr sink     |
 +-------------------------+-------------------------+-------------------------+
 | Drop Policy             | (1000 runs)             | (1000 runs)             |
-| Minimum                 | 6,523,412.00 logs/sec   | 3,639,914.00 logs/sec   |
-| Maximum                 | 125,471,301.00 logs/sec | 124,757,035.00 logs/sec |
-| Average                 | 47,807,668.97 logs/sec  | 39,445,953.86 logs/sec  |
-| Median                  | 43,634,190.00 logs/sec  | 36,502,051.50 logs/sec  |
-| Std Dev                 | 15,950,487.84 logs/sec  | 16,092,290.69 logs/sec  |
+| Minimum                 | 1,550,821.00 logs/sec   | 4,056,189.00 logs/sec   |
+| Maximum                 | 3,650,525.00 logs/sec   | 10,020,402.00 logs/sec  |
+| Average                 | 3,362,464.02 logs/sec   | 8,016,819.71 logs/sec   |
+| Median                  | 3,475,533.00 logs/sec   | 8,034,407.00 logs/sec   |
+| Std Dev                 | 354,351.53 logs/sec     | 820,383.60 logs/sec     |
 +-------------------------+-------------------------+-------------------------+
 | Block Policy            | (1000 runs)             | (1000 runs)             |
-| Minimum                 | 1,547,147.00 logs/sec   | 1,747,256.00 logs/sec   |
-| Maximum                 | 8,866,158.00 logs/sec   | 12,858,595.00 logs/sec  |
-| Average                 | 7,004,907.44 logs/sec   | 9,801,498.71 logs/sec   |
-| Median                  | 6,799,297.50 logs/sec   | 9,869,682.00 logs/sec   |
-| Std Dev                 | 871,647.96 logs/sec     | 1,060,951.82 logs/sec   |
+| Minimum                 | 368,533.00 logs/sec     | 7,537,867.00 logs/sec   |
+| Maximum                 | 3,619,925.00 logs/sec   | 8,886,996.00 logs/sec   |
+| Average                 | 3,492,315.83 logs/sec   | 8,212,761.55 logs/sec   |
+| Median                  | 3,506,415.00 logs/sec   | 8,194,755.00 logs/sec   |
+| Std Dev                 | 125,720.32 logs/sec     | 187,551.94 logs/sec     |
 +-------------------------+-------------------------+-------------------------+
 ```
 

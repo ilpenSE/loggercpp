@@ -14,12 +14,10 @@
 - You can build and generate `.so`, `.dll` and `.dylib` on your machine.
 
 - It does only have header files with implementation,
-but if you define `LOGGER_IMPLEMENTATION` during compilation of header, you can get shared object.
+but if you define `LOGGER_IMPLEMENTATION` and `LOGGER_BUILD` during compilation of header, you can get shared object.
 - It is written in purely C. Contains C++ stuff for extra options (not included in logger.h, logger.h is pure C)
-- Since it is written in C, you can port this library every language supports C FFI (most of them).
-You can compile this single header and turn it into shared object file.
+- Since it is written in C, you can port this library every language supports C FFI (most of them). (Define `LOGGER_BUILD` if needed, for example in Go you must define it, otherwise it'll use C macros for logger functions)
 - If you don't want to use C11, generate library and use no-implementation header that is automatically generated in Makefile.
-(Windows one doesn't generate because yeah)
 
 ## Quick Links
 
@@ -44,12 +42,12 @@ You can compile this single header and turn it into shared object file.
 
 int main() {
   Logger* lg = lg_alloc();
-  LoggerConfig config = {
-    .localTime = true, .generateDefaultFile = true,
-    .policy = LG_DROP
-  };
+  LoggerConfig config = LOGGER_CONFIG_DEFAULTS();
   lg_append_sink(&config, stdout, LG_OUT_TTY);
   lg_init(lg, "logs", config);
+  
+  // or:
+  // lg_init_opt(lg, "logs", .sinks={.items={stdout, LG_OUT_TTY}, .count=1});
 
   lg_info("Hello, World!");
 
@@ -84,130 +82,108 @@ nmake /f Makefile.win debug=1
 for debug information
 
 # API Documentation
-- Main initializer function that you may use in C/C++:
 
-`int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);`
+### `int lg_init(Logger* instance, const char* logs_dir, LoggerConfig config);`
+- Main initializer function.
+- Returns 1 on success.
+- You can re-init your dead instances with this one.
 
-- Initializer with default configs:
+### `int lg_init_opt(Logger* instance, const char* logs_dir, ...);`
+- Initializer with optional parameters. (only in >=C99, doesn't work in C++)
+- You can add parameters with dot. Like: `lg_init_opt(lg, "logs", .localTime=false)`
+- This is a macro, so it'll disappear in build.
 
-`int lg_init_defaults(Logger* instance, const char* logs_dir);`
+### `int lg_init_defaults(Logger* instance, const char* logs_dir);`
+- Initializer with default configs
+- Go check `LOGGER_CONFIG_DEFAULTS` macro.
 
-- The LoggerConfig struct:
-```c
-typedef struct {
-  int localTime;
-  int maxFiles;
-  int generateDefaultFile;
-  LgSinks sinks;
-  LgLogPolicy logPolicy;
-  log_formatter_t logFormatter;
-} LoggerConfig;
-```
-
+### ` int lg_init_flat(Logger* inst, const char* logs_dir, int local_time, int max_log_files, int generateDefaultFile, LgSinks sinks, LgLogPolicy log_policy, log_formatter_t log_formatter);`
 - Flatted version of LoggerConfig
 - It's for languages that doesnt support C structs
 
+### The LoggerConfig struct
 ```c
-int lg_init_flat(Logger* inst, const char* logs_dir,
-                   int local_time, int max_log_files, int generateDefaultFile,
-                   LgSinks sinks, LgLogPolicy log_policy,
-                   log_formatter_t log_formatter);
+typedef struct {
+  int localTime; // 1 (true)
+  int maxFiles; // 0
+  int generateDefaultFile; // 1 (true)
+  LgSinks sinks; // {} (empty)
+  LgLogPolicy logPolicy; // LG_DROP
+  log_formatter_t logFormatter; // NULL
+} LoggerConfig;
 ```
+- Default parameters represented after the field in comment.
 
+### `LoggerConfig LOGGER_CONFIG_DEFAULTS(...)`
+- Returns LoggerConfig with default values.
+- You can override it with variadics (only in >=C99)
+- In C++ or C below C99, you cannot override it through variadics.
+
+### `int lg_destroy(Logger* instance);`
 - Main destroyer function that destroys logger instances (DOES NOT MANAGE MEMORY!)
+- Returns 1 on success.
+- It'll kill the thread too.
 
-`int lg_destroy(Logger* instance);`
-
+### `int lg_is_alive(const Logger* instance);`
 - Check if specific instance is dead or alive (if instance = NULL, checks active instance)
 
-`int lg_is_alive(const Logger* instance);`
-
+### `int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen);`
 - Main producer function that pushes message, level and message length into the queue
-- (NOT RECOMMENDED TO USE DIRECTLY, USE MACROS OR F-FUNCTIONS)
+- (NOT RECOMMENDED TO USE DIRECTLY, USE MACROS OR FUNCTIONS)
 
-`int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen);`
+### `int lg_vlog_(Logger* inst, const LgLogLevel level, const char* fmt, va_list ap);`
+- Wrapper for producer, takes processed variadics and applies printf format.
 
-- Wrapper for producer, takes variadics and processes it, used at macros
+### `int lg_log(const LgLogLevel level, const char* fmt, ...);`, `int lg_info(const char* fmt, ...);`, `int lg_warn(const char* fmt, ...);` and `int lg_error(const char* fmt, ...);`
+- Logger functions with implicit instance (calls explicit ones with NULL)
+- If you define `LOGGER_BUILD` the variadics won't be available.
 
-`int lg_vlog_(Logger* inst, const LgLogLevel level, const char* fmt, ...);`
+### `int lg_logi(Logger* inst, const LgLogLevel level, const char* fmt, ...);`, `int lg_infoi(Logger* inst, const char* fmt, ...);`, `int lg_errori(Logger* inst, const char* fmt, ...);` and `int lg_warni(Logger* inst, const char* fmt, ...);`
+- Logger functions/macros with explicit instance, you can put NULL there if you wanna use active instance
+- If you define `LOGGER_BUILD` the variadics won't be available. (Doesn't take variadics)
 
-- Functions that are used at FFIs (F-functions), the level-less and level-aware functions here:
+### `int lg_flog(const LgLogLevel level, const char* msg);`, `int lg_finfo(const char* msg);`, `int lg_fwarn(const char* msg);` and `int lg_ferror(const char* msg);`
+- Logger functions with implicit instance (calls explicit ones with NULL)
+- These functions always be available without variadics.
 
-`int lg_flog(const LgLogLevel level, const char* msg);`
+### `int lg_flogi(Logger* inst, const LgLogLevel level, const char* msg);`, `int lg_finfoi(Logger* inst, const char* msg);`, `int lg_ferrori(Logger* inst, const char* msg);` and `int lg_fwarni(Logger* inst, const char* msg);`
+- Logger functions with explicit instance, you can put NULL there if you wanna use active instance
+- These functions always be available without variadics.
 
-`int lg_finfo(const char* msg);`
-
-`int lg_fwarn(const char* msg);`
-
-`int lg_ferror(const char* msg);`
-
-- F-functions with explicit instance, you can put NULL there if you wanna use active instance
-- (thats how functions above works)
-
-`int lg_flogi(Logger* inst, const LgLogLevel level, const char* msg);`
-
-`int lg_finfoi(Logger* inst, const char* msg);`
-
-`int lg_ferrori(Logger* inst, const char* msg);`
-
-`int lg_fwarni(Logger* inst, const char* msg);`
-
+### `int lg_set_active_instance(Logger* inst);` and `Logger* lg_get_active_instance();`
 - Getter and setter for active instance
 - (lg_init automatically sets active instance if it's NULL)
 
-`int lg_set_active_instance(Logger* inst);`
+## Helper functions that you can use
 
-`Logger* lg_get_active_instance();`
-
-## Helper functions that you can use:
+### `const char* lg_lvl_to_str(const LgLogLevel level);`
 - Converts level enum to string
 
-`const char* lg_lvl_to_str(const LgLogLevel level);`
-
+### `int lg_get_time_str(char* buf, int isLocalTime);`
 - Gets the time string format which is used at logs and log file names
 
-`int lg_get_time_str(char* buf, int isLocalTime);`
-
+### `void lg_str_format_into(LgString* s, const char* fmt, ...);`
 - Used at consumer and you can use these on your custom formatter, go check static format_msg
 
-`void lg_str_format_into(lg_string* s, const char* fmt, ...);`
+### `void lg_str_write_into(LgString* s, const char* already_formatted_str);`
+- Writes zero ended C-string into LgString struct.
 
-`void lg_str_write_into(lg_string* s, const char* already_formatted_str);`
+### `LoggerConfig lg_config_defaults();`
+- Returns you the default config struct, function wrapper for `LOGGER_CONFIG_DEFAULT()`
 
-- Returns you the default config struct, `lg_init_defaults` depends on this
-
-`LoggerConfig lg_get_defaults();`
-
+### `int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type);`
 - Appends a sink to the config
 
-`int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type);`
-
+### `FILE* lg_get_stdout();`, `FILE* lg_get_stderr();` and `FILE* lg_fopen(const char* path);`
 - These functions returns file pointers directly. Use them in FFIs.
 And, DO NOT use **garbage**-collected languages' files because
 their GC will close it anytime but destroy function also closes it.
 This leads to double free.
-
 In ONLY C/C++, you can use stdout/stderr directly.
-
-Return stdout:
-
-`FILE* lg_get_stdout();`
-
-Return stderr:
-
-`FILE* lg_get_stderr();`
-
-Open a file with wb mode:
-
-`FILE* lg_fopen(const char* path);`
-
 (wb is mandatory because payload processor calls fwrite)
 
+### `Logger* lg_alloc();` and `void lg_free(Logger* inst);`
 - Allocator and freer for heap allocated instances or foreign languages
-
-`Logger* lg_alloc();`
-
-`void lg_free(Logger* inst);`
 
 # Explanation of this logger library (how it works):
 

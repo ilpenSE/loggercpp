@@ -45,20 +45,47 @@
 #define LOGGERDEF LOGGER_EXTERN
 #endif
 
-#define LOGGER_INTERNAL static
+#define LOGGERPRIV static
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <stddef.h>
 
+/*
+  Version of Logger
+  Format: MAJOR_MINOR_PATCH_L (concat these)
+  Minor and patch should be padded with 0 if they're 1 digit long.
+*/
+#define LOGGER_VER 40300L
+#define LOGGER_MAJOR 4
+#define LOGGER_MINOR 3
+#define LOGGER_PATCH 0
+
 #if __STDC_VERSION__ >= 199901L
-#include <stdint.h>
-#else
-#ifndef uint8_t
-typedef unsigned char uint8_t;
+  #include <stdint.h>
+#elif __cplusplus >= 201103L
+  #include <cstdint>
+#else /* <C99 or <C++11 */
+#ifdef _MSC_VER /* MSVC */
+  typedef unsigned __int8  uint8_t;
+  typedef unsigned __int32 uint32_t;
+#else /* POSIX */
+  #include <limits.h>
+  #if UCHAR_MAX == 0xFF
+    typedef unsigned char uint8_t;
+  #else
+    #error "There's no 8-bit unsigned integer found"
+  #endif
+
+  #if UINT_MAX == 0xFFFFFFFFU
+    typedef unsigned int  uint32_t;
+  #elif ULONG_MAX == 0xFFFFFFFFU
+    typedef unsigned long uint32_t;
+  #else
+    #error "There's no 32-bit unsigned integer found"
+  #endif
 #endif
-#ifndef uint32_t
-typedef unsigned int uint32_t;
-#endif
+
 #endif
 
 /* These variables can be fine-tuned due to your traffic */
@@ -75,7 +102,7 @@ typedef unsigned int uint32_t;
 #define LOGGER_TIME_STR_SIZE 24
 
 /* logger max message size (you can change it) */
-#define LOGGER_MAX_MSG_SIZE 256
+#define LOGGER_MAX_MSG_SIZE 192
 
 /* Maximum amount of files that can be in the sink */
 #define LOGGER_MAX_SINKS 8
@@ -92,38 +119,44 @@ typedef unsigned int uint32_t;
 #define LOGGER_CLR_AQUA "\x1b[36m"
 #define LOGGER_CLR_RST "\x1b[0m"
 
+/* Util macros */
+#define LG_UNUSED(x) (void)(x)
+#define LG_STRINGIFY(x) #x
+#define LG_EMPTY_STMT do {} while (0)
+
+#define LG_LOG_LEVELS \
+  X(info, INFO) \
+  X(error, ERROR) \
+  X(warn, WARNING)
+
 typedef enum {
-  LG_INFO = 0,
-  LG_ERROR = 1,
-  LG_WARNING = 2,
-  LG_CUSTOM = 3,
-  /* Add more levels here */
+#define X(_, name) \
+  LG_##name,
+LG_LOG_LEVELS
+#undef X
+  _LgLogLevel_count,
 } LgLogLevel;
 
-/* Log with an explicit logger instance */
-#define lg_logi(instance, level, fmt, ...) \
-  lg_vlog_(instance, level, fmt, ##__VA_ARGS__)
+typedef struct Logger Logger;
 
-#define lg_infoi(instance, fmt, ...) \
-  lg_logi(instance, LG_INFO, fmt, ##__VA_ARGS__)
-#define lg_errori(instance, fmt, ...) \
-  lg_logi(instance, LG_ERROR, fmt, ##__VA_ARGS__)
-#define lg_warni(instance, fmt, ...) \
-  lg_logi(instance, LG_WARNING, fmt, ##__VA_ARGS__)
-
-#define lg_log(level, fmt, ...) \
-  lg_logi(lg_get_active_instance(), level, fmt, ##__VA_ARGS__)
-#define lg_info(fmt, ...) lg_log(LG_INFO, fmt, ##__VA_ARGS__)
-#define lg_error(fmt, ...) lg_log(LG_ERROR, fmt, ##__VA_ARGS__)
-#define lg_warn(fmt, ...) lg_log(LG_WARNING, fmt, ##__VA_ARGS__)
-
-/* you can add your custom level like this: */
-#define lg_custom(fmt, ...) lg_log(LG_CUSTOM, fmt, ##__VA_ARGS__)
+/*
+  If you're building this library, the variadic functions'll
+   be replaced by ones without variadics (their names'll be same)
+*/
+#ifndef LOGGER_NO_VARIADIC_LOGGERS
+  #if defined(LOGGER_BUILD) || (!defined(__STDC_VERSION__) && !defined(__cplusplus))
+    /* C89 does not support variadic macros and doesn't define __STDC_VERSION__ macro */
+    #define LOGGER_NO_VARIADIC_LOGGERS
+  #else
+    #undef LOGGER_NO_VARIADIC_LOGGERS
+  #endif
+#endif
 
 typedef enum {
   LG_DROP = 0,
   LG_BLOCK = 1,
   LG_PRIORITY_BASED = 2,
+  _LgLogPolicy_count,
 } LgLogPolicy;
 
 typedef enum {
@@ -131,12 +164,8 @@ typedef enum {
   LG_OUT_FILE = 1,
   LG_OUT_NET = 2,
   /* Add more out types here */
-  /* Dont forget to update LOGGER_MAX_OUT_TYPES */
+  _LgOutType_count
 } LgOutType;
-
-#define LOGGER_MAX_OUT_TYPES 3
-
-typedef struct Logger Logger;
 
 typedef struct LgString {
   char data[LOGGER_MAX_MSG_SIZE];
@@ -153,7 +182,7 @@ typedef struct {
   size_t count;
 } LgSinks;
 
-typedef LgString LgMsgPack[LOGGER_MAX_OUT_TYPES];
+typedef LgString LgMsgPack[_LgOutType_count];
 
 typedef int (*log_formatter_t)(
   const char* time_str,
@@ -179,11 +208,30 @@ typedef struct {
   #define PRINTF_LIKE(fmt, args)
 #endif
 
+/* Optional parameters and default config macro */
+#ifndef __cplusplus
+
+/* >=C99 have variadic macros. */
+#if __STDC_VERSION__ >= 199901L
+#define LOGGER_CONFIG_DEFAULTS(...)                                   \
+  (LoggerConfig){.localTime=true, .generateDefaultFile=true, \
+                 .logPolicy=LG_DROP, __VA_ARGS__}
+
+#define lg_init_opt(instance, logs_dir, ...)                            \
+  lg_init((instance), (logs_dir), LOGGER_CONFIG_DEFAULTS(__VA_ARGS__))
+#else
+#define LOGGER_CONFIG_DEFAULTS()                                      \
+  (LoggerConfig){1, 0, 1, {0}, LG_DROP, NULL}
+#endif
+#else
+#define LOGGER_CONFIG_DEFAULTS() LoggerConfig{1, 0, 1, {}, LG_DROP, NULL}
+/* C++ version doesn't have optional parameters like in C.
+   Shoutout to ISO standarts of C++ */
+#endif
+
 LOGGERDEF int lg_init(Logger* instance, const char* logs_dir,
                      LoggerConfig config);
-
 LOGGERDEF int lg_init_defaults(Logger* instance, const char* logs_dir);
-
 LOGGERDEF int lg_init_flat(Logger* inst, const char* logs_dir,
                           int local_time, int max_log_files, int generateDefaultFile,
                           LgSinks sinks, LgLogPolicy log_policy,
@@ -196,48 +244,69 @@ LOGGERDEF int lg_init_flat(Logger* inst, const char* logs_dir,
   threads are actively pushing logs at the time of the call.
 */
 LOGGERDEF int lg_destroy(Logger* instance);
-
 LOGGERDEF int lg_is_alive(const Logger* instance);
-
 LOGGERDEF int lg_log_(Logger* inst, const LgLogLevel level,
                      const char* msg, size_t msglen);
-
 LOGGERDEF int lg_vlog_(Logger* inst, const LgLogLevel level,
-                      const char* fmt, ...) PRINTF_LIKE(3, 4);
+                      const char* fmt, va_list ap);
 
-LOGGERDEF int lg_flogi(Logger* inst, const LgLogLevel level, const char* msg);
+/* Implicit instances with F prefix */
 LOGGERDEF int lg_flog(const LgLogLevel level, const char* msg);
+#define X(name, _) \
+  LOGGERDEF int lg_f##name(const char* msg);
+LG_LOG_LEVELS
+#undef X
 
-/* Explicit instances */
-LOGGERDEF int lg_finfoi(Logger* inst, const char* msg);
-LOGGERDEF int lg_ferrori(Logger* inst, const char* msg);
-LOGGERDEF int lg_fwarni(Logger* inst, const char* msg);
+/* Explicit instances with F prefix */
+LOGGERDEF int lg_flogi(Logger* inst, const LgLogLevel level, const char* msg);
+#define X(name, _) \
+  LOGGERDEF int lg_f##name##i(Logger* inst, const char* msg);
+LG_LOG_LEVELS
+#undef X
 
-/* Implicit instances (uses active one) */
-LOGGERDEF int lg_finfo(const char* msg);
-LOGGERDEF int lg_ferror(const char* msg);
-LOGGERDEF int lg_fwarn(const char* msg);
+/* Macros will appear as functions if LOGGER_BUILD is defined
+   or variadic macros are not supported */
+#ifdef LOGGER_NO_VARIADIC_LOGGERS
+/* Implicit instances without F prefix */
+LOGGERDEF int lg_log(const LgLogLevel level, const char* msg);
+#define X(name, _) \
+  LOGGERDEF int lg_##name(const char* msg);
+LG_LOG_LEVELS
+#undef X
+
+/* Explicit instances without F prefix */
+LOGGERDEF int lg_logi(Logger* inst, const LgLogLevel level, const char* msg);
+#define X(name, _) \
+  LOGGERDEF int lg_##name##i(Logger* inst, const char* msg);
+LG_LOG_LEVELS
+#undef X
+#else
+/* Implicit instances with variadics */
+LOGGERDEF int lg_log(const LgLogLevel level, const char* fmt, ...) PRINTF_LIKE(2, 3);
+#define X(name, _) \
+  LOGGERDEF int lg_##name(const char* fmt, ...) PRINTF_LIKE(1, 2);
+LG_LOG_LEVELS
+#undef X
+
+/* Explicit instances with variadics */
+LOGGERDEF int lg_logi(Logger* inst, const LgLogLevel level, const char* fmt, ...) PRINTF_LIKE(3, 4);
+#define X(name, _) \
+  LOGGERDEF int lg_##name##i(Logger* inst, const char* fmt, ...) PRINTF_LIKE(2, 3);
+LG_LOG_LEVELS
+#undef X
+#endif
 
 LOGGERDEF int lg_set_active_instance(Logger* inst);
-
 LOGGERDEF Logger* lg_get_active_instance();
-
 LOGGERDEF const char* lg_lvl_to_str(const LgLogLevel level);
-
-LOGGERDEF LoggerConfig lg_get_defaults();
-
+LOGGERDEF LoggerConfig lg_config_defaults();
 LOGGERDEF int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type);
-
 LOGGERDEF void lg_str_format_into(LgString* s, const char* fmt, ...)
   PRINTF_LIKE(2, 3);
-
 LOGGERDEF void lg_str_write_into(LgString* s,
-                                const char* already_formatted_str);
-
+                                 const char* already_formatted_str);
 LOGGERDEF int lg_get_time_str(Logger* inst, char* buf);
-
 LOGGERDEF Logger* lg_alloc();
-
 LOGGERDEF void lg_free(Logger* inst);
 
 /*
@@ -274,7 +343,6 @@ LOGGERDEF FILE* lg_fopen(const char* path);
 #include <string.h>
 #include <time.h>
 #include <stdalign.h>
-#include <stdarg.h>
 
 #ifdef __cplusplus
 #include <atomic>
@@ -330,41 +398,35 @@ typedef struct {
 } LogQueue;
 
 // Static function forward-declerations
-LOGGER_INTERNAL int lgi_check_dir(const char* path);
-
-LOGGER_INTERNAL bool lgi_normalize_path(const char* path, char* out, size_t size);
-
-LOGGER_INTERNAL int lgi_count_logs_and_get_oldest(const char* path, char* oldest_path, size_t oldest_path_size);
-
-LOGGER_INTERNAL bool lgi_mkdir_p(char* path);
-
-LOGGER_INTERNAL int lgi_def_format_msg(const char* time_str, LgLogLevel level,
+LOGGERPRIV int lgi_check_dir(const char* path);
+LOGGERPRIV bool lgi_normalize_path(const char* path, char* out, size_t size);
+LOGGERPRIV int lgi_count_logs_and_get_oldest(const char* path, char* oldest_path, size_t oldest_path_size);
+LOGGERPRIV bool lgi_mkdir_p(char* path);
+LOGGERPRIV int lgi_def_format_msg(const char* time_str, LgLogLevel level,
                                       const char* msg, uint32_t needed, LgMsgPack pack);
+LOGGERPRIV void lgi_queue_create(LogQueue* q);
+LOGGERPRIV size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_t max_batch);
+LOGGERPRIV bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos);
+LOGGERPRIV void lgi_queue_release(LogQueue* q, size_t pos);
+LOGGERPRIV void lgi_adaptive_wait(int* spins);
 
-LOGGER_INTERNAL void lgi_queue_create(LogQueue* q);
-LOGGER_INTERNAL size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_t max_batch);
-LOGGER_INTERNAL bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos);
-LOGGER_INTERNAL void lgi_queue_release(LogQueue* q, size_t pos);
-
-LOGGER_INTERNAL void lgi_adaptive_wait(int* spins);
-
-LOGGER_INTERNAL inline LogSlot* lgi_slot_get(LogQueue* q, size_t idx)
+LOGGERPRIV inline LogSlot* lgi_slot_get(LogQueue* q, size_t idx)
 {
   return (LogSlot*)(q->slots + (idx & LOGGER_RING_MASK) * LOGGER_RING_STRIDE);
 }
 
 // Manual writes for lg_get_time_str
-LOGGER_INTERNAL inline void lgi_time_write2(char* p, int v)
+LOGGERPRIV inline void lgi_time_write2(char* p, int v)
 {
   p[0] = (char)('0' + v / 10);
   p[1] = (char)('0' + v % 10);
 }
-LOGGER_INTERNAL inline void lgi_time_write4(char* p, int v)
+LOGGERPRIV inline void lgi_time_write4(char* p, int v)
 {
   lgi_time_write2(p, v / 100);
   lgi_time_write2(p + 2, v % 100);
 }
-LOGGER_INTERNAL inline void lgi_time_write3(char* p, int v)
+LOGGERPRIV inline void lgi_time_write3(char* p, int v)
 {
   p[0] = (char)('0' + v / 100);
   p[1] = (char)('0' + (v / 10) % 10);
@@ -372,17 +434,15 @@ LOGGER_INTERNAL inline void lgi_time_write3(char* p, int v)
 }
 
 // Manual appending, used at default format_msg
-LOGGER_INTERNAL inline void lgi_str_append_n(char** p, char* end, const char* s)
+LOGGERPRIV inline void lgi_str_append_n(char** p, char* end, const char* s)
 {
   while (*s && *p < end) *(*p)++ = *s++;
 }
-LOGGER_INTERNAL inline void lgi_str_close(char** p, char* end) {
+LOGGERPRIV inline void lgi_str_close(char** p, char* end) {
   if (*p < end) *(*p)++ = '\n';
   **p = '\0';
 }
 
-#define LG_UNUSED(x) (void)(x)
-#define LG_STRINGIFY(x) #x
 // Fuck you MSVC with C++
 #ifdef __cplusplus
   #define LG_STRUCT(T, ...) (T{__VA_ARGS__})
@@ -402,8 +462,8 @@ LOGGER_INTERNAL inline void lgi_str_close(char** p, char* end) {
            __FILE__, __LINE__, ##__VA_ARGS__);  \
   } while (0)
 #else
-#define LG_DEBUG_ERR(fmt, ...) // swallow
-#define LG_DEBUG(fmt, ...)
+#define LG_DEBUG_ERR(fmt, ...) LG_EMPTY_STMT
+#define LG_DEBUG(fmt, ...) LG_EMPTY_STMT
 #endif // LOGGER_DEBUG
 
 #ifdef _WIN32
@@ -419,11 +479,12 @@ LOGGER_INTERNAL inline void lgi_str_close(char** p, char* end) {
 #endif
 
 struct iovec {
-  void  *iov_base;
+  void*  iov_base;
   size_t iov_len;
 };
 
-#ifndef ssize_t
+#ifndef __ssize_t_defined
+#define __ssize_t_defined
 typedef intptr_t ssize_t;
 #endif
 
@@ -487,6 +548,7 @@ static int pthread_create(pthread_t* t, void* attr,
 #else // POSIX:
 #include <time.h>
 #include <pthread.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/uio.h>
@@ -537,8 +599,8 @@ struct Logger {
   bool generateDefaultFile;
   LgLogPolicy logPolicy;
   int maxLogFiles; // non-positive = unlimited
-  LgSink  sinks[LOGGER_MAX_SINKS + 1];
-  size_t  sinks_count;
+  LgSink sinks[LOGGER_MAX_SINKS + 1];
+  size_t sinks_count;
   log_formatter_t customLogFunc;
   uint32_t out_needed; // needed file flags for formatter
   pthread_t writer_th;
@@ -550,7 +612,7 @@ struct Logger {
 };
 
 // consumer func, writes entries on the ring to stdout or file
-LOGGER_INTERNAL void* lgi_consumer(void* arg) {
+LOGGERPRIV void* lgi_consumer(void* arg) {
   Logger* inst = (Logger*)arg;
   int spins = 0;
   size_t start_pos = 0;
@@ -567,7 +629,7 @@ LOGGER_INTERNAL void* lgi_consumer(void* arg) {
   return NULL;
 }
 
-LOGGER_INTERNAL ATOMIC(Logger*) active_instance = NULL;
+LOGGERPRIV ATOMIC(Logger*) active_instance = NULL;
 
 int lg_init_flat(Logger* inst, const char* logs_dir,
                 int local_time, int max_log_files, int generateDefaultFile,
@@ -586,7 +648,7 @@ int lg_init_flat(Logger* inst, const char* logs_dir,
 
 int lg_init_defaults(Logger* instance, const char* logs_dir)
 {
-  return lg_init(instance, logs_dir, lg_get_defaults());
+  return lg_init(instance, logs_dir, lg_config_defaults());
 }
 
 int lg_init(Logger* inst, const char* logs_dir, LoggerConfig config)
@@ -699,21 +761,14 @@ fail:
   return false;
 }
 
-int lg_vlog_(Logger* inst, const LgLogLevel level, const char* fmt, ...)
-{
+int lg_vlog_(Logger* inst, const LgLogLevel level, const char* fmt, va_list ap) {
   if (!fmt) return false;
-
-  // variadic resolving
-  va_list args;
-  va_start(args, fmt);
   char msg[LOGGER_MAX_MSG_SIZE];
-  int mn = vsnprintf(msg, sizeof(msg), fmt, args);
-  va_end(args);
+  int mn = vsnprintf(msg, sizeof(msg), fmt, ap);
   if (mn < 0) {
     LG_DEBUG_ERR("Cannot resolve print format");
     return false;
   }
-
   return lg_log_(inst, level, msg, mn);
 }
 
@@ -740,7 +795,7 @@ int lg_log_(Logger* inst, const LgLogLevel level, const char* msg, size_t msglen
       if (atomic_compare_exchange_weak_explicit(
             &q->head, &pos, pos + 1,
             memory_order_relaxed, memory_order_relaxed)) {
-        break; // claim success
+        break; // CAS success
       }
       // another producer claimed, retry
     } else if (diff < 0) {
@@ -840,43 +895,81 @@ void lg_free(Logger* inst)
   free(inst);
 }
 
-// Explicit instances
+// Functions that takes level as parameter with f prefix
 int lg_flogi(Logger* inst, const LgLogLevel level, const char* msg)
 {
   if (!msg) return false;
   if (!inst) return lg_log_(lg_get_active_instance(), level, msg, strlen(msg));
   return lg_log_(inst, level, msg, strlen(msg));
 }
-int lg_finfoi(Logger* inst, const char* msg)
-{
-  return lg_flogi(inst, LG_INFO, msg);
-}
-int lg_ferrori(Logger* inst, const char* msg)
-{
-  return lg_flogi(inst, LG_ERROR, msg);
-}
-int lg_fwarni(Logger* inst, const char* msg)
-{
-  return lg_flogi(inst, LG_WARNING, msg);
+int lg_flog(const LgLogLevel level, const char* msg) { return lg_flogi(NULL, level, msg); }
+
+// Functions that the level in their names with f prefix (implicit instance)
+#define X(name, upper) \
+  int lg_f##name(const char* msg) \
+  { \
+    return lg_flogi(NULL, LG_##upper, msg); \
+  }
+LG_LOG_LEVELS
+#undef X
+
+// Functions that the level in their names with f prefix (explicit instance)
+#define X(name, upper) \
+  int lg_f##name##i(Logger* inst, const char* msg) { \
+    return lg_flogi(inst, LG_##upper, msg); \
+  }
+LG_LOG_LEVELS
+#undef X
+
+// This means there's no macro that starts with lg_ and they're all functions
+#ifdef LOGGER_NO_VARIADIC_LOGGERS
+// Functions that takes level as parameter without f prefix
+int lg_log(LgLogLevel level, const char* msg) { return lg_flogi(NULL, level, msg); }
+int lg_logi(Logger* inst, LgLogLevel level, const char* msg) { return lg_flogi(inst, level, msg); }
+
+// Functions that the level in their names without f prefix (implicit instance)
+#define X(name, upper) \
+  int lg_##name(const char* msg) { return lg_flogi(NULL, LG_##upper, msg); }
+LG_LOG_LEVELS
+#undef X
+
+// Functions that the level in their names without f prefix (explicit instance)
+#define X(name, upper) \
+  int lg_##name##i(Logger* inst, const char* msg) { return lg_flogi(inst, LG_##upper, msg); }
+LG_LOG_LEVELS
+#undef X
+#else // Variadic functions implementation
+#define LG_LOG_GENERIC_VARIADIC(inst, level, fmt)            \
+  va_list args;                             \
+  va_start(args, fmt);                      \
+  int retval = lg_vlog_(inst, level, fmt, args); \
+  va_end(args); \
+  return retval;
+
+int lg_logi(Logger* inst, LgLogLevel level, const char* fmt, ...) {
+  LG_LOG_GENERIC_VARIADIC(inst, level, fmt)
 }
 
-// Implicit instances
-int lg_flog(const LgLogLevel level, const char* msg)
-{
-  return lg_flogi(NULL, level, msg);
+int lg_log(LgLogLevel level, const char* fmt, ...) {
+  LG_LOG_GENERIC_VARIADIC(lg_get_active_instance(), level, fmt)
 }
-int lg_finfo(const char* msg)
-{
-  return lg_flogi(NULL, LG_INFO, msg);
-}
-int lg_ferror(const char* msg)
-{
-  return lg_flogi(NULL, LG_ERROR, msg);
-}
-int lg_fwarn(const char* msg)
-{
-  return lg_flogi(NULL, LG_WARNING, msg);
-}
+
+#define X(name, upper) \
+  int lg_##name##i(Logger* inst, const char* fmt, ...) \
+  { \
+    LG_LOG_GENERIC_VARIADIC(inst, LG_##upper, fmt) \
+  }
+LG_LOG_LEVELS
+#undef X
+
+#define X(name, upper) \
+  int lg_##name(const char* fmt, ...) \
+  { \
+    LG_LOG_GENERIC_VARIADIC(lg_get_active_instance(), LG_##upper, fmt) \
+  }
+LG_LOG_LEVELS
+#undef X
+#endif
 
 const char* lg_lvl_to_str(const LgLogLevel level)
 {
@@ -887,23 +980,13 @@ const char* lg_lvl_to_str(const LgLogLevel level)
     return "ERROR";
   case LG_WARNING:
     return "WARNING";
-  case LG_CUSTOM:
-    return "CUSTOM";
   default:
     return "NULL";
   }
 }
 
-LoggerConfig lg_get_defaults() {
-  LgSinks sinks = { {LG_STRUCT(LgSink, stdout, LG_OUT_TTY) }, 1};
-  LoggerConfig cfg;
-  cfg.localTime = true;
-  cfg.maxFiles = 0;
-  cfg.generateDefaultFile = true;
-  cfg.sinks = sinks;
-  cfg.logPolicy = LG_DROP;
-  cfg.logFormatter = NULL;
-  return cfg;
+LoggerConfig lg_config_defaults() {
+  return LOGGER_CONFIG_DEFAULTS();
 }
 
 int lg_append_sink(LoggerConfig* config, FILE* f, LgOutType type) {
@@ -970,7 +1053,7 @@ int lg_get_time_str(Logger* inst, char* buf)
   return true;
 }
 
-LOGGER_INTERNAL int lgi_check_dir(const char* path)
+LOGGERPRIV int lgi_check_dir(const char* path)
 {
 #ifdef _WIN32
   DWORD attr = GetFileAttributesA(path);
@@ -986,7 +1069,7 @@ LOGGER_INTERNAL int lgi_check_dir(const char* path)
 #endif
 }
 
-LOGGER_INTERNAL bool lgi_mkdir_p(char* path)
+LOGGERPRIV bool lgi_mkdir_p(char* path)
 {
   if (!path || !*path) return false;
 
@@ -1005,7 +1088,7 @@ LOGGER_INTERNAL bool lgi_mkdir_p(char* path)
   return true;
 }
 
-LOGGER_INTERNAL int lgi_count_logs_and_get_oldest(const char* path, char* oldest_path, size_t opsz) {
+LOGGERPRIV int lgi_count_logs_and_get_oldest(const char* path, char* oldest_path, size_t opsz) {
   int count = 0;
 #ifdef _WIN32
   char pattern[PATH_MAX];
@@ -1058,7 +1141,7 @@ LOGGER_INTERNAL int lgi_count_logs_and_get_oldest(const char* path, char* oldest
   return count;
 }
 
-LOGGER_INTERNAL bool lgi_normalize_path(const char* path, char* out, size_t size)
+LOGGERPRIV bool lgi_normalize_path(const char* path, char* out, size_t size)
 {
   if (!path || !*path) return false;
   char* dst = out;
@@ -1119,7 +1202,7 @@ void lg_str_write_into(LgString* s, const char* str)
   s->len = len;
 }
 
-LOGGER_INTERNAL int lgi_def_format_msg(
+LOGGERPRIV int lgi_def_format_msg(
   const char* time_str, LgLogLevel level,
   const char* msg, uint32_t needed, LgMsgPack pack)
 {
@@ -1190,7 +1273,7 @@ LOGGER_INTERNAL int lgi_def_format_msg(
   return true;
 }
 
-LOGGER_INTERNAL void lgi_queue_create(LogQueue* q) {
+LOGGERPRIV void lgi_queue_create(LogQueue* q) {
   q->tail = 0;
   atomic_store_explicit(&q->head, 0, memory_order_relaxed);
 
@@ -1202,7 +1285,7 @@ LOGGER_INTERNAL void lgi_queue_create(LogQueue* q) {
   atomic_thread_fence(memory_order_seq_cst);
 }
 
-LOGGER_INTERNAL size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_t max_batch)
+LOGGERPRIV size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_t max_batch)
 {
   size_t pos = q->tail;
   size_t count = 0;
@@ -1223,15 +1306,15 @@ LOGGER_INTERNAL size_t lgi_queue_pop_batch(LogQueue* q, size_t* start_pos, size_
   return count;
 }
 
-LOGGER_INTERNAL bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos) {
+LOGGERPRIV bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos) {
   size_t count = lgi_queue_pop_batch(&inst->queue, start_pos, LOGGER_MAX_BATCH);
   if (count == 0) return false;
   char time_str[LOGGER_TIME_STR_SIZE];
   log_formatter_t fn = inst->customLogFunc ? inst->customLogFunc : lgi_def_format_msg;
 
   LgMsgPack msg_packs[LOGGER_MAX_BATCH];
-  struct iovec vecs[LOGGER_MAX_OUT_TYPES][LOGGER_MAX_BATCH];
-  int vec_counts[LOGGER_MAX_OUT_TYPES] = {0};
+  struct iovec vecs[_LgOutType_count][LOGGER_MAX_BATCH];
+  int vec_counts[_LgOutType_count] = {0};
 
   for (size_t i = 0; i < count; i++) {
     LogPayload payload = {};
@@ -1244,7 +1327,7 @@ LOGGER_INTERNAL bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos) {
     if (!fn(time_str, payload.level, payload.msg, inst->out_needed, msg_packs[i]))
       continue;
 
-    for (size_t t = 0; t < LOGGER_MAX_OUT_TYPES; t++) {
+    for (size_t t = 0; t < _LgOutType_count; t++) {
       if (msg_packs[i][t].len == 0) continue;
       vecs[t][vec_counts[t]].iov_base = msg_packs[i][t].data;
       vecs[t][vec_counts[t]].iov_len  = msg_packs[i][t].len;
@@ -1260,12 +1343,12 @@ LOGGER_INTERNAL bool lgi_queue_ppr_batch(Logger* inst, size_t* start_pos) {
   return true;
 }
 
-LOGGER_INTERNAL void lgi_queue_release(LogQueue* q, size_t pos) {
+LOGGERPRIV void lgi_queue_release(LogQueue* q, size_t pos) {
   LogSlot* s = lgi_slot_get(q, pos);
   atomic_store_explicit(&s->seq, pos + LOGGER_RING_SIZE, memory_order_release);
 }
 
-LOGGER_INTERNAL void lgi_adaptive_wait(int* spins) {
+LOGGERPRIV void lgi_adaptive_wait(int* spins) {
   if (*spins < LOGGER_WAIT_NO_PAUSE_MAGIC) {
     *spins += 1;
   } else if (*spins < LOGGER_WAIT_PAUSE_MAGIC) {

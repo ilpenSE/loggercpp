@@ -6,6 +6,7 @@ static Logger* lg;
 
 int myFormatter(const char* time_str, LgLogLevel level,
                const char* msg, uint32_t needed, LgMsgPack pack) {
+  if (!msg) return 0;
   LgString* file_str = &pack[LG_OUT_FILE];
   LgString* tty_str = &pack[LG_OUT_TTY];
   LgString* net_str = &pack[LG_OUT_NET];
@@ -39,8 +40,11 @@ int myFormatter(const char* time_str, LgLogLevel level,
 
 int main() {
   lg = lg_alloc();
-  LoggerConfig cfg = lg_get_defaults();
+
+  /* C89 does not have designated initializer. */
+  LoggerConfig cfg = lg_config_defaults();
   cfg.logFormatter = myFormatter;
+  lg_append_sink(&cfg, stdout, LG_OUT_TTY);
   lg_append_sink(&cfg, stderr, LG_OUT_NET);
 
   lg_init(lg, "logs", cfg);

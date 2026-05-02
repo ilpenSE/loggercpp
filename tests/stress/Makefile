@@ -1,12 +1,12 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -O0 -ggdb -I../../
+CFLAGS := -Wall -Wextra -O2 -ggdb -I../../
 
 TARGET := app
 SRC := main.c multithread.c singlethread.c
 
 all: $(TARGET)
 
-$(TARGET): $(SRC) ../../logger.h utils.h
+$(TARGET): $(SRC) ../../logger.h utils.h Makefile
 	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
 
 clean:

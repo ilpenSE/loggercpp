@@ -63,14 +63,14 @@ fn main() {
         //println!("{i}");
         let fmt = format!("Fuck Rust {:04} times", i);
         let msg = CString::new(fmt).unwrap();
-        lg_finfo(msg.as_ptr());
+        lg_info(msg.as_ptr());
         //lg_ferror(msg.as_ptr());
         //lg_fwarn(msg.as_ptr());
       }
     } else {
-      lg_finfo(cstr!("Hello from Rust!"));
-      lg_fwarn(cstr!("Warn from Rust!"));
-      lg_ferror(cstr!("Error from Rust!"));
+      lg_info(cstr!("Hello from Rust!"));
+      lg_warn(cstr!("Warn from Rust!"));
+      lg_error(cstr!("Error from Rust!"));
     }
 
     let dres = lg_destroy(lg);
