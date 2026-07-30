@@ -1,6 +1,9 @@
 # The Logger Library
 [![Logger Library](https://github.com/ilpenSE/logger/actions/workflows/build.yaml/badge.svg)](https://github.com/ilpenSE/logger/actions/workflows/build.yaml)
 
+> [!WARNING]
+> This library is deprecated, use [timber](https://github.com/ilpenSE/timber)
+
 - ![Language](https://img.shields.io/badge/language-C-blue)
 ![Language](https://img.shields.io/badge/safe%20in-C++-blue)
 - ![Platform](https://img.shields.io/badge/platform-posix%20windows%20apple-brightgreen)
